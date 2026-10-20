@@ -102,7 +102,7 @@ Demo hashes, SiliconFlow `BAAI/bge-m3`, and OpenAI embeddings requested at 1024 
 
 The recommended pair can be signed up for from mainland China.
 
-Chat is DeepSeek. Create a key at [platform.deepseek.com](https://platform.deepseek.com). The default model name is `deepseek-chat`. DeepSeek retired that id on 2026-07-24 (it last routed to Flash, non-thinking). If a live call returns model-not-found, set `DEEPSEEK_CHAT_MODEL=deepseek-flash`. The request sends `thinking: { "type": "disabled" }` so the stream is the answer. Prices in `src/lib/cost.ts` use DeepSeek's off-peak Flash rates as of 2026-10-20, including the cache-hit split when the stream reports it.
+Chat is DeepSeek. Create a key at [platform.deepseek.com](https://platform.deepseek.com). The default model is `deepseek-flash` (DeepSeek-V4.1-Flash). Set `DEEPSEEK_CHAT_MODEL=deepseek-v4-pro` for the higher-quality model. The request sends `thinking: { "type": "disabled" }` so the stream is the answer. Prices in `src/lib/cost.ts` use DeepSeek's off-peak rates as of 2026-10-20 (`deepseek-flash` and `deepseek-v4-pro`), including the cache-hit split when the stream reports it.
 
 Embeddings are SiliconFlow (硅基流动) `BAAI/bge-m3`, 1024 dimensions, via the OpenAI-compatible endpoint. Create a key at [cloud.siliconflow.cn](https://cloud.siliconflow.cn). Free models may ask for real-name verification. The request does not send a `dimensions` field, because SiliconFlow only accepts that on Qwen3 embedding models. `BAAI/bge-m3` is metered at $0 from a 2026-08-21 snapshot of their price page; re-check [cloud.siliconflow.cn/models](https://cloud.siliconflow.cn/models) before you trust the zero.
 
@@ -111,7 +111,7 @@ DEEPSEEK_API_KEY=sk-...
 SILICONFLOW_API_KEY=sk-...
 CHAT_PROVIDER=deepseek
 EMBEDDING_PROVIDER=siliconflow
-DEEPSEEK_CHAT_MODEL=deepseek-chat
+DEEPSEEK_CHAT_MODEL=deepseek-flash
 SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
 ```
 
@@ -142,7 +142,7 @@ If a selected provider has no key, that part falls back to demo and the banner e
 | `CHAT_PROVIDER` | `deepseek`, `openai`, `anthropic`, or `demo`. Unset: DeepSeek if `DEEPSEEK_API_KEY` is set, else OpenAI if its key is set, else demo |
 | `EMBEDDING_PROVIDER` | `siliconflow`, `openai`, or `demo`. Unset: demo while chat is demo; SiliconFlow when chat is DeepSeek and `SILICONFLOW_API_KEY` is set; else OpenAI if its key is set; else SiliconFlow if its key is set; else demo |
 | `DEEPSEEK_API_KEY` | Chat when the chat provider is DeepSeek |
-| `DEEPSEEK_CHAT_MODEL` | Default `deepseek-chat`. Use `deepseek-flash` if that id is rejected |
+| `DEEPSEEK_CHAT_MODEL` | Default `deepseek-flash`. `deepseek-v4-pro` is the higher-quality option |
 | `DEEPSEEK_BASE_URL` | Default `https://api.deepseek.com` |
 | `SILICONFLOW_API_KEY` | Embeddings when the embedding provider is SiliconFlow |
 | `SILICONFLOW_EMBEDDING_MODEL` | Default `BAAI/bge-m3` (1024-d) |
@@ -190,7 +190,7 @@ Vercel will not keep `.data/store.json` between requests. Demo mode is for `pnpm
 
 ## What is not verified here
 
-Offline tests, `pnpm eval`, demo mode, and `pnpm build` are the checks that run without credentials. This repo was not run against a live Supabase project, and not against live DeepSeek, SiliconFlow, OpenAI, or Anthropic keys. Provider tests mock HTTP. The SQL and the Supabase store are written to match, but a real migration and a real embedding or chat call still need your keys. DeepSeek's `thinking: disabled` flag and the current `deepseek-chat` model id were not confirmed against the API (the docs say that id stopped on 2026-07-24). SiliconFlow's $0 rate for `BAAI/bge-m3` is from a 2026-08-21 price snapshot, not a page fetched on 2026-10-20.
+Offline tests, `pnpm eval`, demo mode, and `pnpm build` are the checks that run without credentials. This repo was not run against a live Supabase project, and not against live DeepSeek, SiliconFlow, OpenAI, or Anthropic keys. Provider tests mock HTTP. The SQL and the Supabase store are written to match, but a real migration and a real embedding or chat call still need your keys. DeepSeek's `thinking: disabled` flag was not confirmed against the API. The default model id `deepseek-flash` matches a live `/models` list that also includes `deepseek-v4-pro`. SiliconFlow's $0 rate for `BAAI/bge-m3` is from a 2026-08-21 price snapshot, not a page fetched on 2026-10-20.
 
 ## Layout
 

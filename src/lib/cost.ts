@@ -7,9 +7,8 @@
  * - DeepSeek off-peak Flash rates: https://api-docs.deepseek.com/quick_start/pricing
  *   Cache-miss input $0.15, cache-hit input $0.003, output $0.60 per 1M.
  *   Peak (weekdays 01:00–04:00 and 06:00–10:00 UTC) is 2×. This meter uses
- *   off-peak, which covers most hours. `deepseek-chat` was retired on
- *   2026-07-24 (https://api-docs.deepseek.com/news/news260424) and last
- *   routed to Flash non-thinking, so it shares the Flash rate here.
+ *   off-peak, which covers most hours. Live ids on the account are
+ *   `deepseek-flash` (DeepSeek-V4.1-Flash) and `deepseek-v4-pro`.
  * - SiliconFlow `BAAI/bge-m3` was marked free on the China price page as of
  *   a 2026-08-21 snapshot. The meter charges $0 for that id. Re-check
  *   https://cloud.siliconflow.cn/models before you trust the zero.
@@ -29,7 +28,6 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "BAAI/bge-m3": { inputPerMillion: 0, outputPerMillion: 0 },
   "gpt-4o-mini": { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   "gpt-4o": { inputPerMillion: 2.5, outputPerMillion: 10 },
-  "deepseek-chat": { inputPerMillion: 0.15, outputPerMillion: 0.6, cacheHitPerMillion: 0.003 },
   "deepseek-flash": { inputPerMillion: 0.15, outputPerMillion: 0.6, cacheHitPerMillion: 0.003 },
   "deepseek-v4-pro": { inputPerMillion: 0.66, outputPerMillion: 1.98, cacheHitPerMillion: 0.022 },
   "claude-3-5-haiku-latest": { inputPerMillion: 0.8, outputPerMillion: 4 },

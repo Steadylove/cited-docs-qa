@@ -35,7 +35,7 @@ describe("loadConfig", () => {
       SILICONFLOW_API_KEY: "sf-test",
     });
     expect(config.chatProvider).toBe("deepseek");
-    expect(config.chatModel).toBe("deepseek-chat");
+    expect(config.chatModel).toBe("deepseek-flash");
     expect(config.embeddingProvider).toBe("siliconflow");
     expect(config.embeddingModel).toBe("BAAI/bge-m3");
     expect(config.demo).toBe(false);
@@ -45,7 +45,7 @@ describe("loadConfig", () => {
     const config = loadConfig({
       CHAT_PROVIDER: "deepseek",
       EMBEDDING_PROVIDER: "siliconflow",
-      DEEPSEEK_CHAT_MODEL: "deepseek-chat",
+      DEEPSEEK_CHAT_MODEL: "deepseek-flash",
     });
     expect(config.chatProvider).toBe("demo");
     expect(config.embeddingProvider).toBe("demo");

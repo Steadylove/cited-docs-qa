@@ -26,13 +26,13 @@ describe("DeepSeek chat", () => {
       ]);
     }) as typeof fetch;
 
-    const chat = createDeepSeekChat("ds-test", "deepseek-chat");
+    const chat = createDeepSeekChat("ds-test", "deepseek-flash");
     const deltas = [];
     for await (const delta of chat.stream({ system: "sys", user: "question" })) deltas.push(delta);
 
     expect(urls).toEqual(["https://api.deepseek.com/chat/completions"]);
     expect(bodies[0]).toMatchObject({
-      model: "deepseek-chat",
+      model: "deepseek-flash",
       stream: true,
       stream_options: { include_usage: true },
       temperature: 0,

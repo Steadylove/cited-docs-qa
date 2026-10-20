@@ -128,7 +128,7 @@ describe("demo ask path", () => {
 
     const chat: ChatStreamer = {
       provider: "deepseek",
-      model: "deepseek-chat",
+      model: "deepseek-flash",
       async *stream() {
         yield { text: "Maya Chen founded Harbor & Pine in 2014. [1]" };
         yield {

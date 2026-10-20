@@ -6,7 +6,7 @@
  */
 export const EMBEDDING_DIMENSIONS = 1024;
 
-export const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-flash";
 export const DEFAULT_SILICONFLOW_EMBEDDING_MODEL = "BAAI/bge-m3";
 export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
