@@ -51,6 +51,7 @@ export class SupabaseStore implements DocumentStore {
     chunks: ChunkDraft[];
     embeddingProvider: string;
     embeddingModel: string;
+    embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
   }): Promise<DocumentSummary> {
@@ -66,6 +67,7 @@ export class SupabaseStore implements DocumentStore {
       chunk_count: input.chunks.length,
       embedding_provider: input.embeddingProvider,
       embedding_model: input.embeddingModel,
+      embedding_dimensions: input.embeddingDimensions,
       created_at: createdAt,
     });
     if (error) throw new Error(`Could not save document: ${error.message}`);
@@ -126,6 +128,7 @@ export class SupabaseStore implements DocumentStore {
         chunk_count: input.chunks.length,
         embedding_provider: input.embeddingProvider,
         embedding_model: input.embeddingModel,
+        embedding_dimensions: input.embeddingDimensions,
         created_at: createdAt,
       },
       usage,
@@ -136,7 +139,7 @@ export class SupabaseStore implements DocumentStore {
     const { data, error } = await this.client
       .from("documents")
       .select(
-        "id, workspace_id, filename, mime_type, page_count, chunk_count, embedding_provider, embedding_model, created_at",
+        "id, workspace_id, filename, mime_type, page_count, chunk_count, embedding_provider, embedding_model, embedding_dimensions, created_at",
       )
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false });
@@ -149,7 +152,7 @@ export class SupabaseStore implements DocumentStore {
     const { data, error } = await this.client
       .from("documents")
       .select(
-        "id, workspace_id, filename, mime_type, page_count, chunk_count, embedding_provider, embedding_model, created_at",
+        "id, workspace_id, filename, mime_type, page_count, chunk_count, embedding_provider, embedding_model, embedding_dimensions, created_at",
       )
       .eq("workspace_id", workspaceId)
       .eq("id", documentId)
@@ -216,7 +219,7 @@ export class SupabaseStore implements DocumentStore {
     });
     if (error) {
       throw new Error(
-        `Vector search failed: ${error.message}. Apply supabase/migrations/20261020120000_init.sql if you have not.`,
+        `Vector search failed: ${error.message}. Apply supabase/migrations if you have not (1024-d column).`,
       );
     }
     const vectorHits = ((data ?? []) as unknown[]).map((row) => hitFromRow(asRow(row)));
@@ -348,6 +351,9 @@ export class SupabaseStore implements DocumentStore {
       chunkCount: num(row, "chunk_count"),
       embeddingProvider: str(row, "embedding_provider"),
       embeddingModel: str(row, "embedding_model"),
+      embeddingDimensions: Number.isFinite(numberOr(row.embedding_dimensions, Number.NaN))
+        ? numberOr(row.embedding_dimensions, 0)
+        : 0,
       createdAt: str(row, "created_at"),
       totalCostUsd: spend.billedUsd,
       illustrativeCostUsd: spend.illustrativeUsd,

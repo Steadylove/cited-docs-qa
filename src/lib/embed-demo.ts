@@ -6,9 +6,10 @@ import { contentTokens } from "@/lib/tokens";
  * Deterministic local embedding so retrieval works with no API key.
  *
  * This is feature hashing (the hashing trick): each token adds +1 or -1
- * into a bucket of a 1536-d vector, then we L2-normalize so cosine
- * similarity is a dot product. The width matches text-embedding-3-small
- * only so the database column can stay put. The spaces are not comparable.
+ * into a bucket of a 1024-d vector, then we L2-normalize so cosine
+ * similarity is a dot product. The width matches SiliconFlow `BAAI/bge-m3`
+ * and OpenAI embeddings requested at 1024 so the column can stay put.
+ * The spaces are not comparable.
  * Re-upload a document after switching embedding providers.
  *
  * Bigrams ("sick_leave") keep phrases from colliding with a page that

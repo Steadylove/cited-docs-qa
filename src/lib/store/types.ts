@@ -55,6 +55,7 @@ export interface DocumentStore {
     chunks: ChunkDraft[];
     embeddingProvider: string;
     embeddingModel: string;
+    embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
   }): Promise<DocumentSummary>;

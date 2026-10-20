@@ -10,6 +10,18 @@ describe("cost math", () => {
     expect(priceUsage("text-embedding-3-small", 500_000, 0).usd).toBeCloseTo(0.01, 8);
     expect(priceUsage("demo-extractive", 4_000, 400).usd).toBe(0);
     expect(priceUsage("demo-hash", 4_000, 0).usd).toBe(0);
+    expect(priceUsage("BAAI/bge-m3", 1_000_000, 0).usd).toBe(0);
+    // Off-peak Flash: cache-miss input $0.15, output $0.60 per 1M.
+    expect(priceUsage("deepseek-chat", 1_000_000, 1_000_000).usd).toBeCloseTo(0.75, 8);
+    expect(priceUsage("deepseek-flash", 0, 1_000_000).usd).toBeCloseTo(0.6, 8);
+    // 800k cache hit at $0.003 plus 200k miss at $0.15 plus $0.60 output.
+    expect(
+      priceUsage("deepseek-chat", 1_000_000, 1_000_000, {
+        cacheHitTokens: 800_000,
+        cacheMissTokens: 200_000,
+      }).usd,
+    ).toBeCloseTo(0.6324, 8);
+    expect(priceUsage("deepseek-v4-pro", 1_000_000, 0).usd).toBeCloseTo(0.66, 8);
   });
 
   it("falls back to mini rates for an unknown model and rounds tiny amounts", () => {

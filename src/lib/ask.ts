@@ -36,10 +36,11 @@ export async function* askDocument(options: {
   if (!detail) throw new Error("Document not found.");
   if (
     detail.document.embeddingProvider !== options.embedder.provider ||
-    detail.document.embeddingModel !== options.embedder.model
+    detail.document.embeddingModel !== options.embedder.model ||
+    detail.document.embeddingDimensions !== options.embedder.dimensions
   ) {
     throw new Error(
-      `This document was indexed with ${detail.document.embeddingProvider}/${detail.document.embeddingModel}, but the server is using ${options.embedder.provider}/${options.embedder.model}. Vectors from different models are not comparable. Re-upload the file, or switch EMBEDDING_PROVIDER back.`,
+      `This document was indexed with ${detail.document.embeddingProvider}/${detail.document.embeddingModel} (${detail.document.embeddingDimensions}-d), but the server is using ${options.embedder.provider}/${options.embedder.model} (${options.embedder.dimensions}-d). Vectors from different models are not comparable. Re-upload the file, or switch EMBEDDING_PROVIDER back.`,
     );
   }
 
@@ -71,6 +72,8 @@ export async function* askDocument(options: {
   let raw = "";
   let promptTokens = 0;
   let completionTokens = 0;
+  let cacheHitTokens: number | undefined;
+  let cacheMissTokens: number | undefined;
   const chatModel = options.chat?.model ?? "demo-extractive";
   const chatProvider = options.chat?.provider ?? "demo";
   const prompt = buildGroundedPrompt(
@@ -97,6 +100,10 @@ export async function* askDocument(options: {
       if (delta.usage) {
         promptTokens = delta.usage.promptTokens;
         completionTokens = delta.usage.completionTokens;
+        if (delta.usage.cacheHitTokens != null && delta.usage.cacheMissTokens != null) {
+          cacheHitTokens = delta.usage.cacheHitTokens;
+          cacheMissTokens = delta.usage.cacheMissTokens;
+        }
       }
     }
     if (!deltaUsageWasSet(completionTokens) && raw) {
@@ -123,7 +130,10 @@ export async function* askDocument(options: {
   );
 
   const embedPrice = priceUsage(options.embedder.model, embedded.tokens, 0);
-  const chatPrice = priceUsage(chatModel, promptTokens, completionTokens);
+  const chatPrice = priceUsage(chatModel, promptTokens, completionTokens, {
+    cacheHitTokens,
+    cacheMissTokens,
+  });
   const illustrative = roundUsd(
     priceUsage(ILLUSTRATIVE_EMBEDDING_MODEL, embedded.tokens, 0).usd +
       priceUsage(ILLUSTRATIVE_CHAT_MODEL, promptTokens, completionTokens).usd,

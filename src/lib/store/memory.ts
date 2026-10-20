@@ -79,6 +79,7 @@ export class MemoryStore implements DocumentStore {
     chunks: ChunkDraft[];
     embeddingProvider: string;
     embeddingModel: string;
+    embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
   }): Promise<DocumentSummary> {
@@ -91,6 +92,7 @@ export class MemoryStore implements DocumentStore {
       chunkCount: input.chunks.length,
       embeddingProvider: input.embeddingProvider,
       embeddingModel: input.embeddingModel,
+      embeddingDimensions: input.embeddingDimensions,
       createdAt: new Date().toISOString(),
     };
     await this.mutate(async (snapshot) => {
@@ -177,6 +179,12 @@ export class MemoryStore implements DocumentStore {
     const chunks = this.snapshot.chunks.filter(
       (chunk) => chunk.documentId === input.documentId && chunk.workspaceId === input.workspaceId,
     );
+    const mismatch = chunks.find((chunk) => chunk.embedding.length !== input.embedding.length);
+    if (mismatch) {
+      throw new Error(
+        `Stored embedding width ${mismatch.embedding.length} does not match the query width ${input.embedding.length}. Re-upload the document.`,
+      );
+    }
     return rankChunks(chunks, input.embedding, input.query, input.limit, input.hybrid).map(
       (chunk) => ({
         id: chunk.id,
@@ -260,7 +268,19 @@ export class MemoryStore implements DocumentStore {
     try {
       const raw = await readFile(this.filePath, "utf8");
       const parsed = JSON.parse(raw) as Snapshot;
-      if (parsed?.version === 1) this.snapshot = parsed;
+      if (parsed?.version === 1) {
+        // Older snapshots predate embedding_dimensions. 0 fails the ask-time
+        // guard, which is what we want: those vectors may be 1536-d.
+        this.snapshot = {
+          ...parsed,
+          documents: (parsed.documents ?? []).map((document) => ({
+            ...document,
+            embeddingDimensions: Number.isFinite(document.embeddingDimensions)
+              ? document.embeddingDimensions
+              : 0,
+          })),
+        };
+      }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") throw error;

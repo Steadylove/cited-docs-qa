@@ -1,4 +1,10 @@
-import { DEMO_WORKSPACE_ID } from "@/lib/constants";
+import {
+  DEFAULT_DEEPSEEK_MODEL,
+  DEFAULT_SILICONFLOW_EMBEDDING_MODEL,
+  DEMO_WORKSPACE_ID,
+  DEEPSEEK_BASE_URL,
+  SILICONFLOW_BASE_URL,
+} from "@/lib/constants";
 import type { AppConfig } from "@/lib/config-types";
 import type {
   ChatProviderId,
@@ -26,13 +32,22 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const notes: string[] = [];
   const openAiApiKey = clean(env.OPENAI_API_KEY);
   const anthropicApiKey = clean(env.ANTHROPIC_API_KEY);
+  const deepseekApiKey = clean(env.DEEPSEEK_API_KEY);
+  const siliconflowApiKey = clean(env.SILICONFLOW_API_KEY);
+  const deepseekBaseUrl = clean(env.DEEPSEEK_BASE_URL) ?? DEEPSEEK_BASE_URL;
+  const siliconflowBaseUrl = clean(env.SILICONFLOW_BASE_URL) ?? SILICONFLOW_BASE_URL;
   const supabaseUrl = clean(env.SUPABASE_URL);
   const supabaseServiceRoleKey = clean(env.SUPABASE_SERVICE_ROLE_KEY);
 
-  let chatProvider = (clean(env.CHAT_PROVIDER) ??
-    (openAiApiKey ? "openai" : "demo")) as ChatProviderId;
-  if (!["openai", "anthropic", "demo"].includes(chatProvider)) {
+  const chatRequested = clean(env.CHAT_PROVIDER);
+  let chatProvider = (chatRequested ??
+    (deepseekApiKey ? "deepseek" : openAiApiKey ? "openai" : "demo")) as ChatProviderId;
+  if (!["deepseek", "openai", "anthropic", "demo"].includes(chatProvider)) {
     notes.push(`Unknown CHAT_PROVIDER "${chatProvider}". Using demo chat.`);
+    chatProvider = "demo";
+  }
+  if (chatProvider === "deepseek" && !deepseekApiKey) {
+    notes.push("CHAT_PROVIDER=deepseek but DEEPSEEK_API_KEY is empty. Using demo chat.");
     chatProvider = "demo";
   }
   if (chatProvider === "openai" && !openAiApiKey) {
@@ -50,6 +65,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   let embeddingProvider: EmbeddingProviderId;
   if (embeddingRequested === "demo") {
     embeddingProvider = "demo";
+  } else if (embeddingRequested === "siliconflow") {
+    embeddingProvider = siliconflowApiKey ? "siliconflow" : "demo";
+    if (!siliconflowApiKey) {
+      notes.push(
+        "EMBEDDING_PROVIDER=siliconflow but SILICONFLOW_API_KEY is empty. Using demo embeddings.",
+      );
+    }
   } else if (embeddingRequested === "openai") {
     embeddingProvider = openAiApiKey ? "openai" : "demo";
     if (!openAiApiKey) {
@@ -63,12 +85,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     );
     embeddingProvider = "demo";
   } else if (chatProvider === "demo") {
-    // Explicit demo chat, or no key at all. Keep vectors in the same demo space.
+    // No live chat. Keep vectors in the demo space so a later key does not
+    // mix with passages already stored.
     embeddingProvider = "demo";
+  } else if (chatProvider === "deepseek" && siliconflowApiKey) {
+    embeddingProvider = "siliconflow";
   } else if (openAiApiKey) {
     embeddingProvider = "openai";
+  } else if (siliconflowApiKey) {
+    embeddingProvider = "siliconflow";
   } else {
-    notes.push("No OPENAI_API_KEY for embeddings. Using demo embeddings.");
+    notes.push("No embedding API key. Using demo embeddings.");
     embeddingProvider = "demo";
   }
 
@@ -98,16 +125,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
 
   const chatModel =
-    chatProvider === "anthropic"
-      ? (clean(env.ANTHROPIC_CHAT_MODEL) ?? "claude-3-5-haiku-latest")
-      : chatProvider === "openai"
-        ? (clean(env.OPENAI_CHAT_MODEL) ?? "gpt-4o-mini")
-        : "demo-extractive";
+    chatProvider === "deepseek"
+      ? (clean(env.DEEPSEEK_CHAT_MODEL) ?? DEFAULT_DEEPSEEK_MODEL)
+      : chatProvider === "anthropic"
+        ? (clean(env.ANTHROPIC_CHAT_MODEL) ?? "claude-3-5-haiku-latest")
+        : chatProvider === "openai"
+          ? (clean(env.OPENAI_CHAT_MODEL) ?? "gpt-4o-mini")
+          : "demo-extractive";
 
   const embeddingModel =
-    embeddingProvider === "openai"
-      ? (clean(env.OPENAI_EMBEDDING_MODEL) ?? "text-embedding-3-small")
-      : "demo-hash";
+    embeddingProvider === "siliconflow"
+      ? (clean(env.SILICONFLOW_EMBEDDING_MODEL) ?? DEFAULT_SILICONFLOW_EMBEDDING_MODEL)
+      : embeddingProvider === "openai"
+        ? (clean(env.OPENAI_EMBEDDING_MODEL) ?? "text-embedding-3-small")
+        : "demo-hash";
 
   return {
     chatProvider,
@@ -123,6 +154,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ownerId: clean(env.OWNER_ID) ?? "local-owner",
     openAiApiKey,
     anthropicApiKey,
+    deepseekApiKey,
+    siliconflowApiKey,
+    deepseekBaseUrl,
+    siliconflowBaseUrl,
     supabaseUrl,
     supabaseServiceRoleKey,
   };

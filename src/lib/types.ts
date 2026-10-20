@@ -1,5 +1,5 @@
-export type ChatProviderId = "openai" | "anthropic" | "demo";
-export type EmbeddingProviderId = "openai" | "demo";
+export type ChatProviderId = "deepseek" | "openai" | "anthropic" | "demo";
+export type EmbeddingProviderId = "siliconflow" | "openai" | "demo";
 export type StorageDriver = "supabase" | "memory";
 
 /** Safe to send to the browser. Never add keys here. */
@@ -63,6 +63,7 @@ export type DocumentSummary = {
   chunkCount: number;
   embeddingProvider: string;
   embeddingModel: string;
+  embeddingDimensions: number;
   createdAt: string;
   totalCostUsd: number;
   illustrativeCostUsd: number;

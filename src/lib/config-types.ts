@@ -11,6 +11,10 @@ export type AppConfig = PublicConfig & {
   ownerId: string;
   openAiApiKey?: string;
   anthropicApiKey?: string;
+  deepseekApiKey?: string;
+  siliconflowApiKey?: string;
+  deepseekBaseUrl: string;
+  siliconflowBaseUrl: string;
   supabaseUrl?: string;
   supabaseServiceRoleKey?: string;
 };

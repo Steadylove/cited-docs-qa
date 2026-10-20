@@ -68,6 +68,7 @@ export async function ingestFile(options: {
     })),
     embeddingProvider: options.embedder.provider,
     embeddingModel: options.embedder.model,
+    embeddingDimensions: options.embedder.dimensions,
     embeddingTokens: embedded.tokens,
     embeddingCostUsd: priced.usd,
   });

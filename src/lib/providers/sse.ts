@@ -3,7 +3,7 @@ export type SseEvent = {
   data: string;
 };
 
-/** Read a fetch response body as Server-Sent Events. Used for OpenAI and Anthropic streams. */
+/** Read a fetch response body as Server-Sent Events. Used for OpenAI-compatible and Anthropic streams. */
 export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();

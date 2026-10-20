@@ -19,7 +19,7 @@ Open http://localhost:3000, choose **Try the sample handbook**, ask a question (
 
 What demo mode actually does:
 
-- Embeddings are a local hash into 1536 dimensions, not OpenAI.
+- Embeddings are a local hash into 1024 dimensions, not a hosted model.
 - Answers are sentences copied from the retrieved passages, with real `[n]` markers.
 - Files, chunks, and the cost ledger live in `.data/store.json` on this machine.
 - Tracked spend stays at `$0.00`. An illustrative figure shows what the same token counts would have cost at `text-embedding-3-small` + `gpt-4o-mini` rates.
@@ -56,6 +56,8 @@ flowchart TB
     Ledger[Token and dollar ledger]
   end
   subgraph models [Model providers]
+    DeepSeek[DeepSeek chat]
+    SiliconFlow[SiliconFlow bge-m3 embeddings]
     OpenAI[OpenAI embeddings and chat]
     Anthropic[Anthropic chat]
     Demo[Demo hash and extractive answerer]
@@ -77,7 +79,7 @@ Upload and chat go through route handlers. The browser never sees the service-ro
 
 1. Create a project.
 2. Enable the `vector` extension if it is not already on (Database → Extensions).
-3. Run [`supabase/migrations/20261020120000_init.sql`](supabase/migrations/20261020120000_init.sql) in the SQL editor. With the Supabase CLI, `supabase db push` applies the same file.
+3. Run the files in [`supabase/migrations`](supabase/migrations) in order in the SQL editor. With the Supabase CLI, `supabase db push` applies both. The second file repairs a database that was created from an earlier `vector(1536)` draft; on a fresh database it only backfills `embedding_dimensions` and recreates `match_chunks`.
 4. In Project Settings → API, copy the project URL and the **service role** key. The service role bypasses row level security. It stays on the server.
 
 ```bash
@@ -92,11 +94,28 @@ STORAGE_DRIVER=supabase
 
 Tables: `workspaces`, `documents`, `pages`, `chunks`, `messages`, `usage_events`. Every document and chunk carries `workspace_id`. `workspaces.owner_id` is the seam for a later multi-tenant step. RLS is enabled and there are no policies, so the anon key cannot read the tables. When you add logged-in users, add policies on `owner_id` and stop using the service role for user traffic.
 
-`chunks.embedding` is `vector(1536)` with an HNSW index on cosine distance. Search goes through the `match_chunks` SQL function. Hybrid search also uses the generated `content_tsv` column.
+`chunks.embedding` is `vector(1024)` with an HNSW index on cosine distance. Search goes through the `match_chunks` SQL function. Hybrid search also uses the generated `content_tsv` column. Each document stores `embedding_dimensions` next to the provider and model.
 
-Documents embedded in demo mode and documents embedded with OpenAI are not in the same vector space, even though both are 1536-d. Re-upload after you change `EMBEDDING_PROVIDER`. The app refuses to search a document with a mismatched model rather than return nonsense neighbors.
+Demo hashes, SiliconFlow `BAAI/bge-m3`, and OpenAI embeddings requested at 1024 all fit that column. They are still different spaces. Re-upload after you change `EMBEDDING_PROVIDER` or the embedding model. The app refuses to search a document when the provider, the model, or the width does not match, rather than return nonsense neighbors.
 
 ## Real model keys
+
+The recommended pair can be signed up for from mainland China.
+
+Chat is DeepSeek. Create a key at [platform.deepseek.com](https://platform.deepseek.com). The default model name is `deepseek-chat`. DeepSeek retired that id on 2026-07-24 (it last routed to Flash, non-thinking). If a live call returns model-not-found, set `DEEPSEEK_CHAT_MODEL=deepseek-flash`. The request sends `thinking: { "type": "disabled" }` so the stream is the answer. Prices in `src/lib/cost.ts` use DeepSeek's off-peak Flash rates as of 2026-10-20, including the cache-hit split when the stream reports it.
+
+Embeddings are SiliconFlow (硅基流动) `BAAI/bge-m3`, 1024 dimensions, via the OpenAI-compatible endpoint. Create a key at [cloud.siliconflow.cn](https://cloud.siliconflow.cn). Free models may ask for real-name verification. The request does not send a `dimensions` field, because SiliconFlow only accepts that on Qwen3 embedding models. `BAAI/bge-m3` is metered at $0 from a 2026-08-21 snapshot of their price page; re-check [cloud.siliconflow.cn/models](https://cloud.siliconflow.cn/models) before you trust the zero.
+
+```
+DEEPSEEK_API_KEY=sk-...
+SILICONFLOW_API_KEY=sk-...
+CHAT_PROVIDER=deepseek
+EMBEDDING_PROVIDER=siliconflow
+DEEPSEEK_CHAT_MODEL=deepseek-chat
+SILICONFLOW_EMBEDDING_MODEL=BAAI/bge-m3
+```
+
+Switching to OpenAI is one env change. Upwork clients often expect it. Embeddings are requested with `dimensions: 1024` so they fit the column. Re-upload: that space is not bge-m3.
 
 ```
 OPENAI_API_KEY=sk-...
@@ -106,25 +125,31 @@ OPENAI_CHAT_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-Anthropic can answer while OpenAI still embeds (the embedding column is sized for OpenAI):
+Anthropic can answer while SiliconFlow or OpenAI still embeds:
 
 ```
-OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 CHAT_PROVIDER=anthropic
-EMBEDDING_PROVIDER=openai
+EMBEDDING_PROVIDER=siliconflow
+SILICONFLOW_API_KEY=sk-...
 ANTHROPIC_CHAT_MODEL=claude-3-5-haiku-latest
 ```
 
-If a selected provider has no key, that part falls back to demo and the banner explains why.
+If a selected provider has no key, that part falls back to demo and the banner explains why. No keys at all, including an `.env.local` copied from `.env.example` with the keys still blank, stays in demo mode.
 
 | Variable | Purpose |
 | --- | --- |
-| `CHAT_PROVIDER` | `openai`, `anthropic`, or `demo` |
-| `EMBEDDING_PROVIDER` | `openai` or `demo` |
-| `OPENAI_API_KEY` | Embeddings, and chat when the chat provider is OpenAI |
+| `CHAT_PROVIDER` | `deepseek`, `openai`, `anthropic`, or `demo`. Unset: DeepSeek if `DEEPSEEK_API_KEY` is set, else OpenAI if its key is set, else demo |
+| `EMBEDDING_PROVIDER` | `siliconflow`, `openai`, or `demo`. Unset: demo while chat is demo; SiliconFlow when chat is DeepSeek and `SILICONFLOW_API_KEY` is set; else OpenAI if its key is set; else SiliconFlow if its key is set; else demo |
+| `DEEPSEEK_API_KEY` | Chat when the chat provider is DeepSeek |
+| `DEEPSEEK_CHAT_MODEL` | Default `deepseek-chat`. Use `deepseek-flash` if that id is rejected |
+| `DEEPSEEK_BASE_URL` | Default `https://api.deepseek.com` |
+| `SILICONFLOW_API_KEY` | Embeddings when the embedding provider is SiliconFlow |
+| `SILICONFLOW_EMBEDDING_MODEL` | Default `BAAI/bge-m3` (1024-d) |
+| `SILICONFLOW_BASE_URL` | Default `https://api.siliconflow.cn/v1` |
+| `OPENAI_API_KEY` | Embeddings and chat when those providers are OpenAI |
 | `OPENAI_CHAT_MODEL` | Default `gpt-4o-mini` |
-| `OPENAI_EMBEDDING_MODEL` | Default `text-embedding-3-small` (must stay 1536-d) |
+| `OPENAI_EMBEDDING_MODEL` | Default `text-embedding-3-small`, requested at 1024 dimensions |
 | `ANTHROPIC_API_KEY` | Chat when `CHAT_PROVIDER=anthropic` |
 | `ANTHROPIC_CHAT_MODEL` | Default `claude-3-5-haiku-latest` |
 | `HYBRID_SEARCH` | `false` turns off keyword fusion. Default is on |
@@ -149,7 +174,7 @@ Vercel will not keep `.data/store.json` between requests. Demo mode is for `pnpm
 
 **Per-page extraction.** PDFs are read with `pdfjs-dist` (the same engine as the browser). `.txt` and `.md` are one page unless the file contains form feeds. Plain text does not have real pages; pretending otherwise would make the viewer lie.
 
-**Vectors.** 1536 dimensions, cosine distance, HNSW (`m = 16`, `ef_construction = 64`). HNSW does not need a training sample, so it is safe on an empty project. IVFFlat is the other common index and is a poor fit until the table is large. Top 5 passages are numbered in the prompt.
+**Vectors.** 1024 dimensions, cosine distance, HNSW (`m = 16`, `ef_construction = 64`). That width is native for `BAAI/bge-m3`. OpenAI `text-embedding-3-*` is asked for the same width. HNSW does not need a training sample, so it is safe on an empty project. IVFFlat is the other common index and is a poor fit until the table is large. Top 5 passages are numbered in the prompt. A document records provider, model, and dimension; a mismatch refuses the question.
 
 **Hybrid search.** Reciprocal rank fusion of the vector ranking and a keyword ranking (`k = 60`). Keyword score is the fraction of query content-words that show up in the passage, with a light prefix match so "employ" hits "employs". Set `HYBRID_SEARCH=false` for vectors only. In Supabase the keyword list is `content_tsv`; in the local store it is the same overlap score.
 
@@ -159,13 +184,13 @@ Vercel will not keep `.data/store.json` between requests. Demo mode is for `pnpm
 
 **Source viewer.** The yellow highlight is a character span on the stored page text. When the answer quotes a sentence that actually occurs inside the retrieved chunk, the span narrows to that sentence. Otherwise it is the whole chunk, which is the passage the model was allowed to use. The PDF pane is the browser's own viewer opened at `#page=N`. Painting the highlight onto PDF glyphs would mean aligning our normalized string with pdf.js text positions, and those strings drift. The text panel is the one that cannot drift, because it is the string we embedded.
 
-**Cost.** Each indexing run and each question writes `usage_events`. Chat usage prefers the provider's token counts and falls back to `ceil(characters / 4)`. Dollars come from the table in `src/lib/cost.ts` (update it when prices change). Demo rows are stored at `$0`. Illustrative dollars reprice the same tokens as embedding-3-small and gpt-4o-mini so the meter is still readable with no key. The document list and the workspace banner sum the ledger. Per-question tokens and dollars sit under the answer.
+**Cost.** Each indexing run and each question writes `usage_events`. Chat usage prefers the provider's token counts and falls back to `ceil(characters / 4)`. Dollars come from the one table in `src/lib/cost.ts` (update it when prices change; the file header names the source and the date). DeepSeek's cache-hit rate is used only when the stream includes `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`. The meter uses off-peak rates, not the weekday peak window. Demo rows are stored at `$0`. Illustrative dollars reprice the same tokens as embedding-3-small and gpt-4o-mini so the meter is still readable with no key. The document list and the workspace banner sum the ledger. Per-question tokens and dollars sit under the answer.
 
-**Why these libraries.** Next.js App Router because the deploy target is Vercel and the upload, search, and stream all belong on the server. `pdfjs-dist` for extraction so we are not maintaining a second PDF parser. No OpenAI or Anthropic SDK: the fetch wrappers are short enough to read the stream format. `@supabase/supabase-js` only on the server. Vitest for the offline tests. Tailwind for layout. `pdf-lib` is a dev dependency used only to regenerate the fixture PDF.
+**Why these libraries.** Next.js App Router because the deploy target is Vercel and the upload, search, and stream all belong on the server. `pdfjs-dist` for extraction so we are not maintaining a second PDF parser. No provider SDKs: DeepSeek and SiliconFlow are OpenAI-compatible HTTP, and the fetch wrappers are short enough to read the stream format. Anthropic has its own message stream. `@supabase/supabase-js` only on the server. Vitest for the offline tests. Tailwind for layout. `pdf-lib` is a dev dependency used only to regenerate the fixture PDF.
 
 ## What is not verified here
 
-Offline tests, `pnpm eval`, demo mode, and `pnpm build` are the checks that run without credentials. This repo was not run against a live Supabase project or a live OpenAI/Anthropic key. The SQL and the Supabase store are written to match, but a real migration and a real embedding call still need your keys.
+Offline tests, `pnpm eval`, demo mode, and `pnpm build` are the checks that run without credentials. This repo was not run against a live Supabase project, and not against live DeepSeek, SiliconFlow, OpenAI, or Anthropic keys. Provider tests mock HTTP. The SQL and the Supabase store are written to match, but a real migration and a real embedding or chat call still need your keys. DeepSeek's `thinking: disabled` flag and the current `deepseek-chat` model id were not confirmed against the API (the docs say that id stopped on 2026-07-24). SiliconFlow's $0 rate for `BAAI/bge-m3` is from a 2026-08-21 price snapshot, not a page fetched on 2026-10-20.
 
 ## Layout
 
@@ -177,7 +202,7 @@ src/lib/citations.ts     marker validation and chunk-id mapping
 src/lib/extract.ts       per-page text
 src/lib/ask.ts           retrieve, answer, validate, record cost
 src/lib/store            memory JSON store and Supabase store
-src/lib/providers        OpenAI, Anthropic, and the demo embedder
+src/lib/providers        DeepSeek, SiliconFlow, OpenAI, Anthropic, and the demo embedder
 supabase/migrations      pgvector schema
 fixtures                 handbook PDF and the eval set
 scripts/eval.ts          citation accuracy

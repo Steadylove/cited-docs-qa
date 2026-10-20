@@ -3,9 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { askDocument } from "@/lib/ask";
 import { loadConfig } from "@/lib/config";
-import { REFUSAL_TEXT } from "@/lib/constants";
+import { EMBEDDING_DIMENSIONS, REFUSAL_TEXT } from "@/lib/constants";
 import { ingestFile } from "@/lib/ingest";
 import { getEmbedder } from "@/lib/providers";
+import type { ChatStreamer } from "@/lib/providers/types";
 import { MemoryStore } from "@/lib/store/memory";
 import type { ChatMessage } from "@/lib/types";
 
@@ -35,6 +36,7 @@ describe("demo ask path", () => {
       bytes,
     });
     expect(document.chunkCount).toBeGreaterThan(0);
+    expect(document.embeddingDimensions).toBe(EMBEDDING_DIMENSIONS);
     expect(document.totalCostUsd).toBe(0);
     expect(document.illustrativeCostUsd).toBeGreaterThan(0);
 
@@ -76,6 +78,82 @@ describe("demo ask path", () => {
     expect(refusal.refused).toBe(true);
     expect(refusal.content).toBe(REFUSAL_TEXT);
     expect(refusal.citations).toEqual([]);
+  });
+
+  it("refuses a different embedding space and prices a DeepSeek cache split", async () => {
+    const bytes = new Uint8Array(
+      readFileSync(path.join(process.cwd(), "fixtures", "harbor-pine-handbook.pdf")),
+    );
+    const store = new MemoryStore();
+    const embedder = getEmbedder(config);
+    await store.ensureWorkspace({ id: config.workspaceId, name: "Test", ownerId: "tester" });
+    const document = await ingestFile({
+      store,
+      embedder,
+      workspaceId: config.workspaceId,
+      filename: "harbor-pine-handbook.pdf",
+      bytes,
+    });
+
+    const other = {
+      provider: "siliconflow" as const,
+      model: "BAAI/bge-m3",
+      dimensions: EMBEDDING_DIMENSIONS,
+      embed: async () => ({ vectors: [Array(EMBEDDING_DIMENSIONS).fill(0)], tokens: 1 }),
+    };
+    await expect(
+      collect(
+        askDocument({
+          store,
+          embedder: other,
+          chat: null,
+          workspaceId: config.workspaceId,
+          documentId: document.id,
+          question: "Who founded Harbor & Pine?",
+          hybrid: false,
+        }),
+      ),
+    ).rejects.toThrow(/not comparable/);
+
+    await expect(
+      store.searchChunks({
+        workspaceId: config.workspaceId,
+        documentId: document.id,
+        embedding: [0, 1, 2],
+        query: "founder",
+        limit: 3,
+        hybrid: false,
+      }),
+    ).rejects.toThrow(/width/);
+
+    const chat: ChatStreamer = {
+      provider: "deepseek",
+      model: "deepseek-chat",
+      async *stream() {
+        yield { text: "Maya Chen founded Harbor & Pine in 2014. [1]" };
+        yield {
+          usage: {
+            promptTokens: 1_000_000,
+            completionTokens: 1_000_000,
+            cacheHitTokens: 800_000,
+            cacheMissTokens: 200_000,
+          },
+        };
+      },
+    };
+    const priced = await collect(
+      askDocument({
+        store,
+        embedder,
+        chat,
+        workspaceId: config.workspaceId,
+        documentId: document.id,
+        question: "Who founded Harbor & Pine and in what year?",
+        hybrid: true,
+      }),
+    );
+    expect(priced.content).toContain("[1]");
+    expect(priced.estimatedCostUsd).toBeCloseTo(0.6324, 8);
   });
 });
 

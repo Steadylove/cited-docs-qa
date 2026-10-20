@@ -3,10 +3,12 @@
 -- Enable the vector extension first if this file errors on type "vector"
 -- (Database → Extensions → vector).
 --
--- Embeddings are 1536-d to match OpenAI text-embedding-3-small.
--- A different width means altering `chunks.embedding` and rebuilding the
--- HNSW index. Demo hash vectors use the same width so the column can stay,
--- but they are a different space: re-upload after changing providers.
+-- Embeddings are 1024-d. That is the native width of SiliconFlow BAAI/bge-m3.
+-- OpenAI text-embedding-3-* is requested with dimensions=1024 so it fits
+-- the same column. Demo hash vectors use 1024 too. The spaces are still
+-- not interchangeable: re-upload after changing providers.
+-- Databases created from an earlier draft of this file (vector(1536))
+-- are repaired by 20261020140000_embedding_dim_1024.sql.
 
 create extension if not exists vector;
 
@@ -32,6 +34,9 @@ create table if not exists documents (
   chunk_count integer not null,
   embedding_provider text not null,
   embedding_model text not null,
+  -- Width stored with the document so the app can refuse a mixed space
+  -- even when two models were both requested at 1024.
+  embedding_dimensions integer not null,
   created_at timestamptz not null default now()
 );
 
@@ -55,7 +60,7 @@ create table if not exists chunks (
   content text not null,
   char_start integer not null,
   char_end integer not null,
-  embedding vector(1536) not null,
+  embedding vector(1024) not null,
   -- Keyword half of hybrid search. Generated so the app cannot forget to update it.
   content_tsv tsvector generated always as (to_tsvector('english', content)) stored,
   constraint chunks_offsets_chk check (char_start >= 0 and char_end >= char_start),
@@ -67,7 +72,7 @@ create index if not exists chunks_content_tsv_idx on chunks using gin (content_t
 
 -- HNSW does not need a training sample, so it is safe on an empty project.
 -- IVFFlat is the other common index and is a poor fit until the table is large.
--- Cosine distance matches L2-normalized embeddings (OpenAI's, and the demo hash).
+-- Cosine distance matches L2-normalized embeddings (bge-m3, OpenAI, and the demo hash).
 create index if not exists chunks_embedding_hnsw_idx
   on chunks using hnsw (embedding vector_cosine_ops)
   with (m = 16, ef_construction = 64);
@@ -114,7 +119,7 @@ create index if not exists usage_document_idx on usage_events (document_id);
 create or replace function match_chunks(
   p_workspace_id uuid,
   p_document_id uuid,
-  p_query_embedding vector(1536),
+  p_query_embedding vector(1024),
   p_match_count integer
 )
 returns table (

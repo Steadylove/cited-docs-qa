@@ -1,5 +1,15 @@
-/** OpenAI text-embedding-3-small width. The pgvector column uses the same number. */
-export const EMBEDDING_DIMENSIONS = 1536;
+/**
+ * Width of `chunks.embedding`. SiliconFlow `BAAI/bge-m3` is natively 1024.
+ * OpenAI `text-embedding-3-*` is requested with `dimensions: 1024` so it fits
+ * the same column. Demo hashes use 1024 too. The spaces are still not
+ * interchangeable — the app refuses a model mismatch.
+ */
+export const EMBEDDING_DIMENSIONS = 1024;
+
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+export const DEFAULT_SILICONFLOW_EMBEDDING_MODEL = "BAAI/bge-m3";
+export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+export const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
 
 /**
  * Character window, not tokens. Offsets are indexes into the stored page
