@@ -1,0 +1,67 @@
+[
+  {
+    "id": "founder",
+    "question": "Who founded Harbor & Pine and in what year?",
+    "expectPage": 1,
+    "expectSnippet": "Maya Chen"
+  },
+  {
+    "id": "cafe",
+    "question": "Where is the flagship cafe?",
+    "expectPage": 1,
+    "expectSnippet": "418 Belmont Street"
+  },
+  {
+    "id": "version",
+    "question": "Which handbook version is effective 1 June 2025?",
+    "expectPage": 1,
+    "expectSnippet": "7.4"
+  },
+  {
+    "id": "headcount",
+    "question": "How many people does the company employ?",
+    "expectPage": 1,
+    "expectSnippet": "86 people"
+  },
+  {
+    "id": "vacation",
+    "question": "How many vacation days do full-time employees accrue per year?",
+    "expectPage": 2,
+    "expectSnippet": "18 vacation days"
+  },
+  {
+    "id": "sick",
+    "question": "Does sick leave roll over?",
+    "expectPage": 2,
+    "expectSnippet": "does not roll over"
+  },
+  {
+    "id": "parental",
+    "question": "How long is parental leave?",
+    "expectPage": 2,
+    "expectSnippet": "16 weeks"
+  },
+  {
+    "id": "temperature",
+    "question": "What is the roaster temperature limit?",
+    "expectPage": 3,
+    "expectSnippet": "210 degrees Celsius"
+  },
+  {
+    "id": "discount",
+    "question": "What is the employee wholesale discount?",
+    "expectPage": 4,
+    "expectSnippet": "40 percent"
+  },
+  {
+    "id": "match",
+    "question": "What is the retirement match?",
+    "expectPage": 4,
+    "expectSnippet": "4 percent of salary"
+  },
+  {
+    "id": "pets",
+    "question": "What is the company policy on pet insurance?",
+    "expectRefusal": true
+  }
+]
