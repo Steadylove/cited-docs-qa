@@ -47,18 +47,36 @@ describe("DeepSeek chat", () => {
     });
   });
 
-  it("joins a custom base URL once", async () => {
+  it("joins a SiliconFlow base URL and omits the DeepSeek thinking flag", async () => {
     const urls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       urls.push(String(input));
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return sseResponse(["data: [DONE]\n\n"]);
     }) as typeof fetch;
 
-    const chat = createDeepSeekChat("ds-test", "deepseek-flash", "https://proxy.example/v1/");
+    const chat = createDeepSeekChat(
+      "sf-test",
+      "deepseek-ai/DeepSeek-V4.1-Flash",
+      "https://api.siliconflow.cn/v1/",
+    );
     for await (const delta of chat.stream({ system: "s", user: "u" })) {
       expect(delta.text ?? delta.usage).toBeUndefined();
     }
-    expect(urls).toEqual(["https://proxy.example/v1/chat/completions"]);
+    expect(urls).toEqual(["https://api.siliconflow.cn/v1/chat/completions"]);
+    expect(bodies[0]).not.toHaveProperty("thinking");
+    expect(bodies[0]?.model).toBe("deepseek-ai/DeepSeek-V4.1-Flash");
+  });
+
+  it("maps a 402 body to a balance message", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response('{"error":{"message":"Insufficient Balance"}}', { status: 402 }),
+    ) as typeof fetch;
+    const chat = createDeepSeekChat("ds-test", "deepseek-flash");
+    await expect(chat.stream({ system: "s", user: "u" }).next()).rejects.toThrow(
+      "DeepSeek balance insufficient.",
+    );
   });
 });
 
@@ -94,7 +112,7 @@ describe("SiliconFlow embeddings", () => {
   it("surfaces HTTP errors", async () => {
     globalThis.fetch = vi.fn(async () => new Response("nope", { status: 401 })) as typeof fetch;
     const embedder = createSiliconFlowEmbedder("sf-test", "BAAI/bge-m3");
-    await expect(embedder.embed(["x"])).rejects.toThrow(/SiliconFlow embeddings failed \(401\)/);
+    await expect(embedder.embed(["x"])).rejects.toThrow("SiliconFlow invalid key.");
   });
 });
 

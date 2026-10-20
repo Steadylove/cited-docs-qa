@@ -59,6 +59,18 @@ export function validateCitations(
   return { text: normalized, used, dropped };
 }
 
+/**
+ * Full refusal is the exact sentence and nothing else.
+ * A longer answer that still pastes that sentence answered only part of the
+ * question. The prompt asks the model not to do this; the flag catches it
+ * when a model does it anyway.
+ */
+export function classifyAnswer(text: string): { refused: boolean; partial: boolean } {
+  if (text.trim() === REFUSAL_TEXT) return { refused: true, partial: false };
+  if (text.includes(REFUSAL_TEXT)) return { refused: false, partial: true };
+  return { refused: false, partial: false };
+}
+
 type MappableChunk = {
   n: number;
   id: string;

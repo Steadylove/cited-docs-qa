@@ -14,5 +14,9 @@ export function spendFor(
   filter: (event: StoredUsage) => boolean,
 ): Spend {
   const summary = summarizeUsage(events.filter(filter));
-  return { billedUsd: summary.billedUsd, illustrativeUsd: summary.illustrativeUsd };
+  return {
+    billedUsd: summary.billedUsd,
+    billedCny: summary.billedCny,
+    illustrativeUsd: summary.illustrativeUsd,
+  };
 }

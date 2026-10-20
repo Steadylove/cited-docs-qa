@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ModeBanner } from "@/components/mode-banner";
-import { formatUsd } from "@/lib/cost";
+import { formatTracked, formatUsd } from "@/lib/cost";
 import type { DocumentSummary, PublicConfig, Spend } from "@/lib/types";
 
 export function HomeScreen({
@@ -133,7 +133,7 @@ export function HomeScreen({
                     </span>
                   </span>
                   <span className="text-sm tabular-nums text-muted">
-                    {formatUsd(document.totalCostUsd)} tracked
+                    {formatTracked(document.totalCostUsd, document.totalCostCny)} tracked
                     {config.demo ? ` · ${formatUsd(document.illustrativeCostUsd)} illustrative` : ""}
                   </span>
                 </a>

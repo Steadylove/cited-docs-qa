@@ -1,4 +1,5 @@
 import { EMBEDDING_DIMENSIONS } from "@/lib/constants";
+import { readableProviderError } from "@/lib/providers/errors";
 import type { StreamDelta, StreamUsage } from "@/lib/providers/types";
 import { readSse } from "@/lib/providers/sse";
 
@@ -70,9 +71,7 @@ async function embedBatch(options: {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `${options.providerLabel} embeddings failed (${response.status}): ${detail.slice(0, 280)}`,
-    );
+    throw new Error(readableProviderError(options.providerLabel, response.status, detail));
   }
   const json = (await response.json()) as {
     data?: Array<{ index: number; embedding: number[] }>;
@@ -127,9 +126,7 @@ export async function* streamChatCompletions(options: {
   });
   if (!response.ok || !response.body) {
     const detail = await response.text();
-    throw new Error(
-      `${options.providerLabel} chat failed (${response.status}): ${detail.slice(0, 280)}`,
-    );
+    throw new Error(readableProviderError(options.providerLabel, response.status, detail));
   }
   for await (const event of readSse(response.body)) {
     if (event.data === "[DONE]") return;

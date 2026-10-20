@@ -61,6 +61,11 @@ describe("demo ask path", () => {
     const page = detail!.pages.find((item) => item.pageNumber === citation.pageNumber)!;
     expect(page.text.slice(citation.charStart, citation.charEnd)).toContain("Maya Chen");
     expect(founder.estimatedCostUsd).toBe(0);
+    expect(founder.partial).toBe(false);
+    expect(founder.unpricedModels).toEqual([]);
+    const fused = founder.retrieved.map((passage) => passage.score);
+    expect(fused).toEqual([...fused].sort((a, b) => b - a));
+    expect(founder.retrieved[0]?.scoreKind).toBe("fused");
     expect(founder.illustrativeCostUsd).toBeGreaterThan(0);
     expect(founder.promptTokens).toBeGreaterThan(0);
 
@@ -154,6 +159,54 @@ describe("demo ask path", () => {
     );
     expect(priced.content).toContain("[1]");
     expect(priced.estimatedCostUsd).toBeCloseTo(0.6324, 8);
+    expect(priced.partial).toBe(false);
+
+    const partialChat: ChatStreamer = {
+      provider: "deepseek",
+      model: "deepseek-flash",
+      async *stream() {
+        yield {
+          text: `Maya Chen founded Harbor & Pine in 2014. [1] ${REFUSAL_TEXT}`,
+        };
+      },
+    };
+    const partial = await collect(
+      askDocument({
+        store,
+        embedder,
+        chat: partialChat,
+        workspaceId: config.workspaceId,
+        documentId: document.id,
+        question: "Who founded Harbor & Pine, and what is the pet insurance policy?",
+        hybrid: true,
+      }),
+    );
+    expect(partial.refused).toBe(false);
+    expect(partial.partial).toBe(true);
+    expect(partial.citations.length).toBeGreaterThan(0);
+    expect(partial.content).toContain(REFUSAL_TEXT);
+
+    const unpricedChat: ChatStreamer = {
+      provider: "deepseek",
+      model: "some-unlisted-model",
+      async *stream() {
+        yield { text: "Maya Chen founded Harbor & Pine in 2014. [1]" };
+        yield { usage: { promptTokens: 100, completionTokens: 20, cacheHitTokens: 40, cacheMissTokens: 60 } };
+      },
+    };
+    const unpriced = await collect(
+      askDocument({
+        store,
+        embedder,
+        chat: unpricedChat,
+        workspaceId: config.workspaceId,
+        documentId: document.id,
+        question: "Who founded Harbor & Pine and in what year?",
+        hybrid: true,
+      }),
+    );
+    expect(unpriced.unpricedModels).toContain("some-unlisted-model");
+    expect(unpriced.estimatedCostUsd).toBe(0);
   });
 });
 

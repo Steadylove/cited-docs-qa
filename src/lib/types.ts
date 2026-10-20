@@ -17,6 +17,7 @@ export type PublicConfig = {
 
 export type Spend = {
   billedUsd: number;
+  billedCny: number;
   illustrativeUsd: number;
 };
 
@@ -33,6 +34,12 @@ export type RetrievedPassage = {
   n: number;
   chunkId: string;
   pageNumber: number;
+  /**
+   * `fused` is the reciprocal-rank score the list is ordered by.
+   * `vector` is cosine similarity, used when hybrid search is off.
+   * Older messages omit this and the UI says "score".
+   */
+  scoreKind?: "fused" | "vector";
   score: number;
   preview: string;
 };
@@ -49,8 +56,16 @@ export type ChatMessage = {
   completionTokens: number;
   embeddingTokens: number;
   estimatedCostUsd: number;
+  estimatedCostCny: number;
+  /** Model ids with no row in MODEL_PRICES. Their dollars were not invented. */
+  unpricedModels: string[];
+  /** Model ids whose rate is in the table but marked unverified. */
+  unverifiedModels: string[];
   illustrativeCostUsd: number;
+  /** The whole answer is the refusal sentence. */
   refused: boolean;
+  /** Some of the question was answered, and the text still contains the refusal sentence. */
+  partial: boolean;
   createdAt: string;
 };
 
@@ -66,6 +81,7 @@ export type DocumentSummary = {
   embeddingDimensions: number;
   createdAt: string;
   totalCostUsd: number;
+  totalCostCny: number;
   illustrativeCostUsd: number;
 };
 

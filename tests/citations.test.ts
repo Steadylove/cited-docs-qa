@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapCitations, validateCitations } from "@/lib/citations";
+import { classifyAnswer, mapCitations, validateCitations } from "@/lib/citations";
 import { REFUSAL_TEXT } from "@/lib/constants";
 
 const sources = [
@@ -75,6 +75,18 @@ expect(validation.dropped).toEqual([8, 1]);
     expect(content.slice(localStart, localEnd)).toBe(
       "The roaster temperature limit is 210 degrees Celsius.",
     );
+  });
+
+  it("flags a longer answer that still pastes the refusal sentence", () => {
+    expect(classifyAnswer(REFUSAL_TEXT)).toEqual({ refused: true, partial: false });
+    expect(classifyAnswer(`Maya Chen founded it in 2014. [1] ${REFUSAL_TEXT}`)).toEqual({
+      refused: false,
+      partial: true,
+    });
+    expect(classifyAnswer("Maya Chen founded it in 2014. [1]")).toEqual({
+      refused: false,
+      partial: false,
+    });
   });
 
   it("keeps an answer with no markers unchanged", () => {

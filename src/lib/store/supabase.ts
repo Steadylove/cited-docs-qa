@@ -54,6 +54,7 @@ export class SupabaseStore implements DocumentStore {
     embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
+    embeddingCostCny: number;
   }): Promise<DocumentSummary> {
     const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
@@ -109,6 +110,7 @@ export class SupabaseStore implements DocumentStore {
           completionTokens: 0,
           embeddingTokens: input.embeddingTokens,
           estimatedCostUsd: input.embeddingCostUsd,
+          estimatedCostCny: input.embeddingCostCny,
         },
       ]);
     } catch (error) {
@@ -223,23 +225,13 @@ export class SupabaseStore implements DocumentStore {
       );
     }
     const vectorHits = ((data ?? []) as unknown[]).map((row) => hitFromRow(asRow(row)));
-    if (!input.hybrid) {
-      return vectorHits.slice(0, input.limit).map((hit, index) => ({
-        ...hit,
-        score: typeof (data as Row[])[index]?.similarity === "number"
-          ? ((data as Row[])[index].similarity as number)
-          : hit.score,
-      }));
-    }
+    if (!input.hybrid) return vectorHits.slice(0, input.limit);
 
     const keywordHits = await this.keywordHits(input.workspaceId, input.documentId, input.query);
     const fused = fuseByRank([vectorHits, keywordHits]);
-    const similarity = new Map(
-      ((data ?? []) as Row[]).map((row) => [str(row, "id"), numberOr(row.similarity, 0)]),
-    );
-    return fused.slice(0, input.limit).map((hit) => ({
+    return fused.slice(0, input.limit).map(({ fusedScore, ...hit }) => ({
       ...hit,
-      score: similarity.get(hit.id) ?? hit.score,
+      score: fusedScore,
     }));
   }
 
@@ -307,6 +299,7 @@ export class SupabaseStore implements DocumentStore {
         completion_tokens: event.completionTokens,
         embedding_tokens: event.embeddingTokens,
         estimated_cost_usd: event.estimatedCostUsd,
+        estimated_cost_cny: event.estimatedCostCny,
       })),
     );
     if (error) throw new Error(`Could not record usage: ${error.message}`);
@@ -316,7 +309,7 @@ export class SupabaseStore implements DocumentStore {
     const { data, error } = await this.client
       .from("usage_events")
       .select(
-        "id, workspace_id, document_id, kind, provider, model, prompt_tokens, completion_tokens, embedding_tokens, estimated_cost_usd",
+        "id, workspace_id, document_id, kind, provider, model, prompt_tokens, completion_tokens, embedding_tokens, estimated_cost_usd, estimated_cost_cny",
       )
       .eq("workspace_id", workspaceId);
     if (error) throw new Error(`Could not load usage: ${error.message}`);
@@ -335,6 +328,7 @@ export class SupabaseStore implements DocumentStore {
         completionTokens: num(record, "completion_tokens"),
         embeddingTokens: num(record, "embedding_tokens"),
         estimatedCostUsd: num(record, "estimated_cost_usd"),
+        estimatedCostCny: numberOr(record.estimated_cost_cny, 0),
       };
     });
   }
@@ -356,6 +350,7 @@ export class SupabaseStore implements DocumentStore {
         : 0,
       createdAt: str(row, "created_at"),
       totalCostUsd: spend.billedUsd,
+      totalCostCny: spend.billedCny,
       illustrativeCostUsd: spend.illustrativeUsd,
     };
   }
@@ -378,8 +373,12 @@ function emptyUser(documentId: string, content: string, createdAt: string): Chat
     completionTokens: 0,
     embeddingTokens: 0,
     estimatedCostUsd: 0,
+    estimatedCostCny: 0,
+    unpricedModels: [],
+    unverifiedModels: [],
     illustrativeCostUsd: 0,
     refused: false,
+    partial: false,
     createdAt,
   };
 }
@@ -398,8 +397,12 @@ function messageToRow(workspaceId: string, message: ChatMessage) {
     completion_tokens: message.completionTokens,
     embedding_tokens: message.embeddingTokens,
     estimated_cost_usd: message.estimatedCostUsd,
+    estimated_cost_cny: message.estimatedCostCny,
+    unpriced_models: message.unpricedModels,
+    unverified_models: message.unverifiedModels,
     illustrative_cost_usd: message.illustrativeCostUsd,
     refused: message.refused,
+    partial: message.partial,
     created_at: message.createdAt,
   };
 }
@@ -421,8 +424,12 @@ function messageFromRow(row: Row): ChatMessage {
     completionTokens: num(row, "completion_tokens"),
     embeddingTokens: num(row, "embedding_tokens"),
     estimatedCostUsd: num(row, "estimated_cost_usd"),
+    estimatedCostCny: numberOr(row.estimated_cost_cny, 0),
+    unpricedModels: stringList(row.unpriced_models),
+    unverifiedModels: stringList(row.unverified_models),
     illustrativeCostUsd: num(row, "illustrative_cost_usd"),
     refused: Boolean(row.refused),
+    partial: Boolean(row.partial),
     createdAt: str(row, "created_at"),
   };
 }
@@ -454,6 +461,11 @@ function num(row: Row, key: string): number {
   const value = numberOr(row[key], Number.NaN);
   if (!Number.isFinite(value)) throw new Error(`Expected ${key} to be a number.`);
   return value;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 function numberOr(value: unknown, fallback: number): number {

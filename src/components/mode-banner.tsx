@@ -1,5 +1,5 @@
 import type { PublicConfig, Spend } from "@/lib/types";
-import { formatUsd } from "@/lib/cost";
+import { formatTracked, formatUsd } from "@/lib/cost";
 
 export function ModeBanner({ config, spend }: { config: PublicConfig; spend?: Spend }) {
   const local = config.storageDriver === "memory";
@@ -18,7 +18,7 @@ export function ModeBanner({ config, spend }: { config: PublicConfig; spend?: Sp
         </p>
         {spend ? (
           <p className="tabular-nums">
-            Workspace spend {formatUsd(spend.billedUsd)}
+            Workspace spend {formatTracked(spend.billedUsd, spend.billedCny)}
             {config.demo ? ` · illustrative ${formatUsd(spend.illustrativeUsd)}` : ""}
           </p>
         ) : null}

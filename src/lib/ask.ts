@@ -1,7 +1,7 @@
 import { extractiveAnswer } from "@/lib/answer-demo";
-import { mapCitations, validateCitations } from "@/lib/citations";
-import { REFUSAL_TEXT, TOP_K } from "@/lib/constants";
-import { estimateTokens, priceUsage, roundUsd, ILLUSTRATIVE_CHAT_MODEL, ILLUSTRATIVE_EMBEDDING_MODEL } from "@/lib/cost";
+import { classifyAnswer, mapCitations, validateCitations } from "@/lib/citations";
+import { TOP_K } from "@/lib/constants";
+import { estimateTokens, priceUsage, roundUsd, ILLUSTRATIVE_CHAT_MODEL, ILLUSTRATIVE_EMBEDDING_MODEL, type PriceQuote } from "@/lib/cost";
 import { buildGroundedPrompt } from "@/lib/prompt";
 import type { ChatStreamer, Embedder } from "@/lib/providers/types";
 import type { DocumentStore } from "@/lib/store/types";
@@ -65,6 +65,7 @@ export async function* askDocument(options: {
     n: hit.n,
     chunkId: hit.id,
     pageNumber: hit.pageNumber,
+    scoreKind: options.hybrid ? ("fused" as const) : ("vector" as const),
     score: Math.round(hit.score * 10000) / 10000,
     preview: hit.content.replace(/\s+/g, " ").trim().slice(0, 180),
   }));
@@ -134,10 +135,15 @@ export async function* askDocument(options: {
     cacheHitTokens,
     cacheMissTokens,
   });
+  const priced = combinePrices([
+    [options.embedder.model, embedPrice],
+    [chatModel, chatPrice],
+  ]);
   const illustrative = roundUsd(
-    priceUsage(ILLUSTRATIVE_EMBEDDING_MODEL, embedded.tokens, 0).usd +
-      priceUsage(ILLUSTRATIVE_CHAT_MODEL, promptTokens, completionTokens).usd,
+    priceUsage(ILLUSTRATIVE_EMBEDDING_MODEL, embedded.tokens, 0).amount +
+      priceUsage(ILLUSTRATIVE_CHAT_MODEL, promptTokens, completionTokens).amount,
   );
+  const coverage = classifyAnswer(validation.text);
 
   const saved = await options.store.appendExchange({
     workspaceId: options.workspaceId,
@@ -151,9 +157,13 @@ export async function* askDocument(options: {
       promptTokens,
       completionTokens,
       embeddingTokens: embedded.tokens,
-      estimatedCostUsd: roundUsd(embedPrice.usd + chatPrice.usd),
+      estimatedCostUsd: roundUsd(priced.usd),
+      estimatedCostCny: roundUsd(priced.cny),
+      unpricedModels: priced.unpriced,
+      unverifiedModels: priced.unverified,
       illustrativeCostUsd: illustrative,
-      refused: validation.text === REFUSAL_TEXT,
+      refused: coverage.refused,
+      partial: coverage.partial,
     },
     usage: [
       {
@@ -163,7 +173,7 @@ export async function* askDocument(options: {
         promptTokens: 0,
         completionTokens: 0,
         embeddingTokens: embedded.tokens,
-        estimatedCostUsd: embedPrice.usd,
+        ...amounts(embedPrice),
       },
       {
         kind: "chat",
@@ -172,7 +182,7 @@ export async function* askDocument(options: {
         promptTokens,
         completionTokens,
         embeddingTokens: 0,
-        estimatedCostUsd: chatPrice.usd,
+        ...amounts(chatPrice),
       },
     ],
   });
@@ -193,4 +203,33 @@ function slices(text: string, size: number): string[] {
 
 function deltaUsageWasSet(completionTokens: number): boolean {
   return completionTokens > 0;
+}
+
+function amounts(quote: PriceQuote): { estimatedCostUsd: number; estimatedCostCny: number } {
+  if (!quote.known) return { estimatedCostUsd: 0, estimatedCostCny: 0 };
+  return quote.currency === "CNY"
+    ? { estimatedCostUsd: 0, estimatedCostCny: quote.amount }
+    : { estimatedCostUsd: quote.amount, estimatedCostCny: 0 };
+}
+
+function combinePrices(rows: Array<[string, PriceQuote]>): {
+  usd: number;
+  cny: number;
+  unpriced: string[];
+  unverified: string[];
+} {
+  const unpriced: string[] = [];
+  const unverified: string[] = [];
+  let usd = 0;
+  let cny = 0;
+  for (const [model, quote] of rows) {
+    if (!quote.known) {
+      unpriced.push(model);
+      continue;
+    }
+    if (quote.unverified) unverified.push(model);
+    if (quote.currency === "CNY") cny += quote.amount;
+    else usd += quote.amount;
+  }
+  return { usd, cny, unpriced, unverified };
 }

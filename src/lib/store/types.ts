@@ -35,6 +35,7 @@ export type UsageDraft = {
   completionTokens: number;
   embeddingTokens: number;
   estimatedCostUsd: number;
+  estimatedCostCny: number;
 };
 
 export type AnswerDraft = Omit<ChatMessage, "id" | "documentId" | "role" | "createdAt">;
@@ -58,6 +59,7 @@ export interface DocumentStore {
     embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
+    embeddingCostCny: number;
   }): Promise<DocumentSummary>;
   listDocuments(workspaceId: string): Promise<DocumentSummary[]>;
   getDocument(workspaceId: string, documentId: string): Promise<DocumentDetail | null>;

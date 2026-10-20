@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AnswerText } from "@/components/answer-text";
 import { ModeBanner } from "@/components/mode-banner";
 import { SourceViewer } from "@/components/source-viewer";
-import { formatUsd } from "@/lib/cost";
+import { formatTracked, formatUsd } from "@/lib/cost";
 import { SAMPLE_FILENAME, SAMPLE_QUESTIONS } from "@/lib/constants";
 import type { ChatMessage, Citation, DocumentDetail, PublicConfig, Spend } from "@/lib/types";
 
@@ -24,6 +24,7 @@ export function ChatView({
   const [active, setActive] = useState<Citation | null>(null);
   const [docSpend, setDocSpend] = useState<Spend>({
     billedUsd: detail.document.totalCostUsd,
+    billedCny: detail.document.totalCostCny,
     illustrativeUsd: detail.document.illustrativeCostUsd,
   });
   const [workspaceSpend, setWorkspaceSpend] = useState(initialSpend);
@@ -57,8 +58,12 @@ export function ChatView({
       completionTokens: 0,
       embeddingTokens: 0,
       estimatedCostUsd: 0,
+      estimatedCostCny: 0,
+      unpricedModels: [],
+      unverifiedModels: [],
       illustrativeCostUsd: 0,
       refused: false,
+      partial: false,
       createdAt: new Date().toISOString(),
     };
     const assistantDraft: ChatMessage = { ...userDraft, id: `${draftId}-assistant`, role: "assistant", content: "" };
@@ -135,7 +140,7 @@ export function ChatView({
             <h1 className="font-serif text-3xl leading-tight">{detail.document.filename}</h1>
             <p className="mt-1 text-sm text-muted">
               {detail.document.pageCount} pages · {detail.document.chunkCount} chunks · tracked{" "}
-              {formatUsd(docSpend.billedUsd)}
+              {formatTracked(docSpend.billedUsd, docSpend.billedCny)}
               {config.demo ? ` · illustrative ${formatUsd(docSpend.illustrativeUsd)}` : ""}
             </p>
           </header>
@@ -155,11 +160,16 @@ export function ChatView({
                 {message.role === "assistant" ? (
                   <div
                     className={
-                      message.refused
+                      message.refused || message.partial
                         ? "rounded-xl border border-[#e4d3a1] bg-[#fff8e8] p-4"
                         : "rounded-xl border border-line bg-white/80 p-4"
                     }
                   >
+                    {message.partial ? (
+                      <p className="mb-2 text-xs font-medium text-[#8a5a12]">
+                        Partially answered. Part of the question is not in the sources.
+                      </p>
+                    ) : null}
                     <AnswerText text={message.content || (busy ? "…" : "")} onCite={(n) => focusCitation(message, n)} />
                     {message.droppedCitations.length > 0 ? (
                       <p className="mt-2 text-xs text-[#8a2b1b]">
@@ -173,17 +183,27 @@ export function ChatView({
                         tokens · {message.embeddingTokens} embedding tokens ·{" "}
                         {config.demo
                           ? `${formatUsd(message.illustrativeCostUsd)} illustrative, not billed`
-                          : `${formatUsd(message.estimatedCostUsd)} estimated`}
+                          : `${formatTracked(message.estimatedCostUsd, message.estimatedCostCny)} estimated`}
+                        {message.unpricedModels.length > 0
+                          ? ` · unpriced: ${message.unpricedModels.join(", ")} (no rate, not estimated)`
+                          : ""}
+                        {message.unverifiedModels.length > 0
+                          ? ` · unverified rate: ${message.unverifiedModels.join(", ")}`
+                          : ""}
                       </p>
                     ) : null}
                     {message.retrieved.length > 0 ? (
                       <details className="mt-3 text-xs text-muted">
                         <summary className="cursor-pointer">Retrieved passages</summary>
+                        <p className="mt-2">
+                          Hybrid order uses the fused rank score. Vector-only search shows cosine
+                          similarity. The two numbers are not the same scale.
+                        </p>
                         <ul className="mt-2 space-y-2">
                           {message.retrieved.map((passage) => (
                             <li key={passage.chunkId}>
                               <span className="font-medium text-ink">[{passage.n}]</span> page{" "}
-                              {passage.pageNumber} · score {passage.score}
+                              {passage.pageNumber} · {scoreLabel(passage)}
                               <span className="mt-0.5 block">{passage.preview}</span>
                             </li>
                           ))}
@@ -262,6 +282,12 @@ export function ChatView({
       </div>
     </main>
   );
+}
+
+function scoreLabel(passage: { scoreKind?: string; score: number }): string {
+  if (passage.scoreKind === "fused") return `fused ${passage.score}`;
+  if (passage.scoreKind === "vector") return `vector ${passage.score}`;
+  return `score ${passage.score}`;
 }
 
 function readEvent(block: string): { event: string; data: Record<string, unknown> } | null {

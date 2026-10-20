@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoEmbed } from "@/lib/embed-demo";
-import { cosine, fuseByRank } from "@/lib/retrieve";
+import { cosine, fuseByRank, rankChunks } from "@/lib/retrieve";
 import { overlapScore } from "@/lib/tokens";
 
 describe("demo retrieval", () => {
@@ -24,5 +24,39 @@ describe("demo retrieval", () => {
       [{ id: "both" }],
     ]);
     expect(fused[0]?.id).toBe("both");
+    expect(fused[0]?.fusedScore).toBeGreaterThan(fused[1]?.fusedScore ?? 0);
+  });
+
+  it("orders hybrid hits by the fused score it reports", () => {
+    const ranked = rankChunks(
+      [
+        {
+          id: "vector-only",
+          pageNumber: 1,
+          chunkIndex: 0,
+          content: "unrelated payroll calendar",
+          charStart: 0,
+          charEnd: 10,
+          embedding: [1, 0],
+        },
+        {
+          id: "both",
+          pageNumber: 2,
+          chunkIndex: 1,
+          content: "sick leave does not roll over",
+          charStart: 0,
+          charEnd: 10,
+          embedding: [0.2, 0.8],
+        },
+      ],
+      [0, 1],
+      "sick leave roll over",
+      2,
+      true,
+    );
+    expect(ranked.map((chunk) => chunk.id)[0]).toBe("both");
+    const scores = ranked.map((chunk) => chunk.score);
+    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+    expect(scores[0]).not.toBeCloseTo(cosine([0.2, 0.8], [0, 1]), 5);
   });
 });

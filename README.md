@@ -37,7 +37,9 @@ pnpm build
 pnpm generate:fixture   # rewrite fixtures/harbor-pine-handbook.pdf
 ```
 
-`pnpm eval` exits non-zero unless every question cites the expected page, or refuses when the handbook has nothing to say (pet insurance).
+`pnpm eval` exits non-zero unless every question cites the expected page, or refuses when the handbook has nothing to say (pet insurance). It always uses demo providers.
+
+`EVAL_LIVE=1 pnpm eval` loads the real chat and embedding providers from the environment, still stores the fixture in a private memory file, and prints citation accuracy, refusal accuracy, token counts, and estimated cost. It exits non-zero on a miss. That path spends real tokens.
 
 ## Architecture
 
@@ -102,7 +104,11 @@ Demo hashes, SiliconFlow `BAAI/bge-m3`, and OpenAI embeddings requested at 1024 
 
 The recommended pair can be signed up for from mainland China.
 
-Chat is DeepSeek. Create a key at [platform.deepseek.com](https://platform.deepseek.com). The default model is `deepseek-flash` (DeepSeek-V4.1-Flash). Set `DEEPSEEK_CHAT_MODEL=deepseek-v4-pro` for the higher-quality model. The request sends `thinking: { "type": "disabled" }` so the stream is the answer. Prices in `src/lib/cost.ts` use DeepSeek's off-peak rates as of 2026-10-20 (`deepseek-flash` and `deepseek-v4-pro`), including the cache-hit split when the stream reports it.
+Chat is DeepSeek. Create a key at [platform.deepseek.com](https://platform.deepseek.com). The default model is `deepseek-flash` (DeepSeek-V4.1-Flash). Set `DEEPSEEK_CHAT_MODEL=deepseek-v4-pro` for the higher-quality model. Calls to `api.deepseek.com` send `thinking: { "type": "disabled" }` so the stream is the answer.
+
+One SiliconFlow key can cover both sides. Set `DEEPSEEK_API_KEY` to the same value as `SILICONFLOW_API_KEY`, `DEEPSEEK_BASE_URL=https://api.siliconflow.cn/v1`, and `DEEPSEEK_CHAT_MODEL=deepseek-ai/DeepSeek-V4.1-Flash`. That host does not get the DeepSeek thinking flag. The price for that id is in CNY in `src/lib/cost.ts` (SiliconFlow's longer window, fetched 2026-10-20) and is not converted to USD.
+
+Prices for `deepseek-flash` and `deepseek-v4-pro` are DeepSeek's off-peak USD rates as of 2026-10-20, including the cache-hit split when the stream reports it. An id with no row is labeled unpriced and billed at 0, not at gpt-4o-mini.
 
 Embeddings are SiliconFlow (硅基流动) `BAAI/bge-m3`, 1024 dimensions, via the OpenAI-compatible endpoint. Create a key at [cloud.siliconflow.cn](https://cloud.siliconflow.cn). Free models may ask for real-name verification. The request does not send a `dimensions` field, because SiliconFlow only accepts that on Qwen3 embedding models. `BAAI/bge-m3` is metered at $0 from a 2026-08-21 snapshot of their price page; re-check [cloud.siliconflow.cn/models](https://cloud.siliconflow.cn/models) before you trust the zero.
 
@@ -143,7 +149,7 @@ If a selected provider has no key, that part falls back to demo and the banner e
 | `EMBEDDING_PROVIDER` | `siliconflow`, `openai`, or `demo`. Unset: demo while chat is demo; SiliconFlow when chat is DeepSeek and `SILICONFLOW_API_KEY` is set; else OpenAI if its key is set; else SiliconFlow if its key is set; else demo |
 | `DEEPSEEK_API_KEY` | Chat when the chat provider is DeepSeek |
 | `DEEPSEEK_CHAT_MODEL` | Default `deepseek-flash`. `deepseek-v4-pro` is the higher-quality option |
-| `DEEPSEEK_BASE_URL` | Default `https://api.deepseek.com` |
+| `DEEPSEEK_BASE_URL` | Default `https://api.deepseek.com`. Set `https://api.siliconflow.cn/v1` to send chat through SiliconFlow |
 | `SILICONFLOW_API_KEY` | Embeddings when the embedding provider is SiliconFlow |
 | `SILICONFLOW_EMBEDDING_MODEL` | Default `BAAI/bge-m3` (1024-d) |
 | `SILICONFLOW_BASE_URL` | Default `https://api.siliconflow.cn/v1` |
@@ -176,21 +182,21 @@ Vercel will not keep `.data/store.json` between requests. Demo mode is for `pnpm
 
 **Vectors.** 1024 dimensions, cosine distance, HNSW (`m = 16`, `ef_construction = 64`). That width is native for `BAAI/bge-m3`. OpenAI `text-embedding-3-*` is asked for the same width. HNSW does not need a training sample, so it is safe on an empty project. IVFFlat is the other common index and is a poor fit until the table is large. Top 5 passages are numbered in the prompt. A document records provider, model, and dimension; a mismatch refuses the question.
 
-**Hybrid search.** Reciprocal rank fusion of the vector ranking and a keyword ranking (`k = 60`). Keyword score is the fraction of query content-words that show up in the passage, with a light prefix match so "employ" hits "employs". Set `HYBRID_SEARCH=false` for vectors only. In Supabase the keyword list is `content_tsv`; in the local store it is the same overlap score.
+**Hybrid search.** Reciprocal rank fusion of the vector ranking and a keyword ranking (`k = 60`). Keyword score is the fraction of query content-words that show up in the passage, with a light prefix match so "employ" hits "employs". Set `HYBRID_SEARCH=false` for vectors only. In Supabase the keyword list is `content_tsv`; in the local store it is the same overlap score. The retrieved list is in that fused order, and the number next to each passage is the fused rank score (`fused 0.03`), not cosine similarity. Vector-only search labels the number `vector`.
 
-**Citations.** The model sees `[1] (page N)` blocks, not raw chunk ids. Ids are long and models invent them. After generation, `validateCitations` drops any `[n]` whose `n` was not in the retrieved set, then maps the survivors to chunk ids, page numbers, and character offsets. A refusal is the exact sentence `The documents do not contain enough evidence to answer that.` and is not allowed to keep markers. Dropped markers are shown under the answer.
+**Citations.** The model sees `[1] (page N)` blocks, not raw chunk ids. Ids are long and models invent them. After generation, `validateCitations` drops any `[n]` whose `n` was not in the retrieved set, then maps the survivors to chunk ids, page numbers, and character offsets. A full refusal is the exact sentence `The documents do not contain enough evidence to answer that.` and is not allowed to keep markers. If only part of the question is supported, the prompt tells the model to answer that part and name the gap in its own words, without pasting the refusal sentence. If a reply still contains that sentence plus other text, the UI marks it partially answered. Dropped markers are shown under the answer.
 
 **Streaming.** Live providers stream tokens over server-sent events. If validation changes the text, the server sends a `replace` event so the UI does not keep a hallucinated marker. Demo mode streams the already-checked extractive answer in small slices.
 
 **Source viewer.** The yellow highlight is a character span on the stored page text. When the answer quotes a sentence that actually occurs inside the retrieved chunk, the span narrows to that sentence. Otherwise it is the whole chunk, which is the passage the model was allowed to use. The PDF pane is the browser's own viewer opened at `#page=N`. Painting the highlight onto PDF glyphs would mean aligning our normalized string with pdf.js text positions, and those strings drift. The text panel is the one that cannot drift, because it is the string we embedded.
 
-**Cost.** Each indexing run and each question writes `usage_events`. Chat usage prefers the provider's token counts and falls back to `ceil(characters / 4)`. Dollars come from the one table in `src/lib/cost.ts` (update it when prices change; the file header names the source and the date). DeepSeek's cache-hit rate is used only when the stream includes `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`. The meter uses off-peak rates, not the weekday peak window. Demo rows are stored at `$0`. Illustrative dollars reprice the same tokens as embedding-3-small and gpt-4o-mini so the meter is still readable with no key. The document list and the workspace banner sum the ledger. Per-question tokens and dollars sit under the answer.
+**Cost.** Each indexing run and each question writes `usage_events`. Chat usage prefers the provider's token counts and falls back to `ceil(characters / 4)`. Amounts come from the one table in `src/lib/cost.ts` (update it when prices change; the file header names the source, the currency, and the date). DeepSeek's cache-hit rate is used only when the model is in that table and the stream includes `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`. Unknown model ids are marked unpriced in the UI and on the saved message; they are not billed at gpt-4o-mini. SiliconFlow rows are CNY and are summed separately from USD. Demo rows are stored at `$0`. Illustrative dollars reprice the same tokens as embedding-3-small and gpt-4o-mini so the meter is still readable with no key. The document list and the workspace banner sum the ledger. Per-question tokens and cost sit under the answer.
 
 **Why these libraries.** Next.js App Router because the deploy target is Vercel and the upload, search, and stream all belong on the server. `pdfjs-dist` for extraction so we are not maintaining a second PDF parser. No provider SDKs: DeepSeek and SiliconFlow are OpenAI-compatible HTTP, and the fetch wrappers are short enough to read the stream format. Anthropic has its own message stream. `@supabase/supabase-js` only on the server. Vitest for the offline tests. Tailwind for layout. `pdf-lib` is a dev dependency used only to regenerate the fixture PDF.
 
 ## What is not verified here
 
-Offline tests, `pnpm eval`, demo mode, and `pnpm build` are the checks that run without credentials. This repo was not run against a live Supabase project, and not against live DeepSeek, SiliconFlow, OpenAI, or Anthropic keys. Provider tests mock HTTP. The SQL and the Supabase store are written to match, but a real migration and a real embedding or chat call still need your keys. DeepSeek's `thinking: disabled` flag was not confirmed against the API. The default model id `deepseek-flash` matches a live `/models` list that also includes `deepseek-v4-pro`. SiliconFlow's $0 rate for `BAAI/bge-m3` is from a 2026-08-21 price snapshot, not a page fetched on 2026-10-20.
+Offline tests, `pnpm eval` (demo), and `pnpm build` run without credentials. `EVAL_LIVE=1 pnpm eval` calls whatever providers the environment selects. Provider unit tests mock HTTP. DeepSeek's `thinking: disabled` flag was not confirmed against a completion call. SiliconFlow `BAAI/bge-m3` (¥0), `Pro/BAAI/bge-m3` (¥0.07 / 1M), and `deepseek-ai/DeepSeek-V4.1-Flash` (longer-window CNY rates) were read from https://www.siliconflow.cn/pricing on 2026-10-20 and are not converted to USD. A live Supabase migration of the new `partial` and `estimated_cost_cny` columns was not run here.
 
 ## Layout
 

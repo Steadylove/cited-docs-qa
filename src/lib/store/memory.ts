@@ -18,7 +18,7 @@ import type {
   Workspace,
 } from "@/lib/types";
 
-type DocumentRow = Omit<DocumentSummary, "totalCostUsd" | "illustrativeCostUsd">;
+type DocumentRow = Omit<DocumentSummary, "totalCostUsd" | "totalCostCny" | "illustrativeCostUsd">;
 
 type Snapshot = {
   version: 1;
@@ -82,6 +82,7 @@ export class MemoryStore implements DocumentStore {
     embeddingDimensions: number;
     embeddingTokens: number;
     embeddingCostUsd: number;
+    embeddingCostCny: number;
   }): Promise<DocumentSummary> {
     const document: DocumentRow = {
       id: crypto.randomUUID(),
@@ -122,6 +123,7 @@ export class MemoryStore implements DocumentStore {
         completionTokens: 0,
         embeddingTokens: input.embeddingTokens,
         estimatedCostUsd: input.embeddingCostUsd,
+        estimatedCostCny: input.embeddingCostCny,
       });
     });
     return this.withSpend(document, this.snapshot.usage);
@@ -148,6 +150,7 @@ export class MemoryStore implements DocumentStore {
       .sort((a, b) => a.pageNumber - b.pageNumber);
     const messages = this.snapshot.messages
       .filter((message) => message.documentId === documentId)
+      .map((message) => normalizeMessage(message))
       .slice()
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
     return { document: this.withSpend(document, this.snapshot.usage), pages, messages };
@@ -223,8 +226,12 @@ export class MemoryStore implements DocumentStore {
       completionTokens: 0,
       embeddingTokens: 0,
       estimatedCostUsd: 0,
+      estimatedCostCny: 0,
+      unpricedModels: [],
+      unverifiedModels: [],
       illustrativeCostUsd: 0,
       refused: false,
+      partial: false,
       createdAt: new Date(now).toISOString(),
     };
     const assistant: ChatMessage = {
@@ -260,7 +267,12 @@ export class MemoryStore implements DocumentStore {
 
   private withSpend(document: DocumentRow, usage: StoredUsage[]): DocumentSummary {
     const spend = spendFor(usage, (event) => event.documentId === document.id);
-    return { ...document, totalCostUsd: spend.billedUsd, illustrativeCostUsd: spend.illustrativeUsd };
+    return {
+      ...document,
+      totalCostUsd: spend.billedUsd,
+      totalCostCny: spend.billedCny,
+      illustrativeCostUsd: spend.illustrativeUsd,
+    };
   }
 
   private async load(): Promise<void> {
@@ -278,6 +290,11 @@ export class MemoryStore implements DocumentStore {
             embeddingDimensions: Number.isFinite(document.embeddingDimensions)
               ? document.embeddingDimensions
               : 0,
+          })),
+          messages: (parsed.messages ?? []).map((message) => normalizeMessage(message)),
+          usage: (parsed.usage ?? []).map((event) => ({
+            ...event,
+            estimatedCostCny: Number.isFinite(event.estimatedCostCny) ? event.estimatedCostCny : 0,
           })),
         };
       }
@@ -307,4 +324,14 @@ export class MemoryStore implements DocumentStore {
     await writeFile(tmp, JSON.stringify(this.snapshot));
     await rename(tmp, this.filePath);
   }
+}
+
+function normalizeMessage(message: ChatMessage): ChatMessage {
+  return {
+    ...message,
+    estimatedCostCny: Number.isFinite(message.estimatedCostCny) ? message.estimatedCostCny : 0,
+    unpricedModels: Array.isArray(message.unpricedModels) ? message.unpricedModels : [],
+    unverifiedModels: Array.isArray(message.unverifiedModels) ? message.unverifiedModels : [],
+    partial: message.partial === true,
+  };
 }

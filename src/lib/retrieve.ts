@@ -27,7 +27,7 @@ export function cosine(a: number[], b: number[]): number {
 export function fuseByRank<T extends { id: string }>(
   lists: T[][],
   k = 60,
-): T[] {
+): Array<T & { fusedScore: number }> {
   const score = new Map<string, number>();
   const item = new Map<string, T>();
   for (const list of lists) {
@@ -36,11 +36,13 @@ export function fuseByRank<T extends { id: string }>(
       score.set(entry.id, (score.get(entry.id) ?? 0) + 1 / (k + index + 1));
     });
   }
-  return [...item.values()].sort((a, b) => {
-    const delta = (score.get(b.id) ?? 0) - (score.get(a.id) ?? 0);
-    if (delta !== 0) return delta;
-    return a.id < b.id ? -1 : 1;
-  });
+  return [...item.values()]
+    .sort((a, b) => {
+      const delta = (score.get(b.id) ?? 0) - (score.get(a.id) ?? 0);
+      if (delta !== 0) return delta;
+      return a.id < b.id ? -1 : 1;
+    })
+    .map((entry) => ({ ...entry, fusedScore: score.get(entry.id) ?? 0 }));
 }
 
 export type RankableChunk = {
@@ -78,9 +80,8 @@ export function rankChunks(
     byVector.map((entry) => entry.chunk),
     byKeyword.map((entry) => entry.chunk),
   ]);
-  const scoreOf = new Map(scored.map((entry) => [entry.chunk.id, entry.vector * 0.75 + entry.keyword * 0.25]));
-  return fused.slice(0, limit).map((chunk) => ({
+  return fused.slice(0, limit).map(({ fusedScore, ...chunk }) => ({
     ...chunk,
-    score: scoreOf.get(chunk.id) ?? 0,
+    score: fusedScore,
   }));
 }

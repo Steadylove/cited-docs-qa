@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { chunkPageText } from "@/lib/chunk";
-import { priceUsage } from "@/lib/cost";
+import { priceUsage, type PriceQuote } from "@/lib/cost";
 import { extractPages } from "@/lib/extract";
 import type { Embedder } from "@/lib/providers/types";
 import type { DocumentStore } from "@/lib/store/types";
@@ -53,6 +53,7 @@ export async function ingestFile(options: {
   }
 
   const priced = priceUsage(options.embedder.model, embedded.tokens, 0);
+  const cost = money(priced);
   return options.store.saveDocument({
     workspaceId: options.workspaceId,
     filename,
@@ -70,6 +71,14 @@ export async function ingestFile(options: {
     embeddingModel: options.embedder.model,
     embeddingDimensions: options.embedder.dimensions,
     embeddingTokens: embedded.tokens,
-    embeddingCostUsd: priced.usd,
+    embeddingCostUsd: cost.estimatedCostUsd,
+    embeddingCostCny: cost.estimatedCostCny,
   });
+}
+
+function money(quote: PriceQuote): { estimatedCostUsd: number; estimatedCostCny: number } {
+  if (!quote.known) return { estimatedCostUsd: 0, estimatedCostCny: 0 };
+  return quote.currency === "CNY"
+    ? { estimatedCostUsd: 0, estimatedCostCny: quote.amount }
+    : { estimatedCostUsd: quote.amount, estimatedCostCny: 0 };
 }

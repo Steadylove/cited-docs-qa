@@ -1,3 +1,4 @@
+import { readableProviderError } from "@/lib/providers/errors";
 import type { ChatStreamer, StreamDelta } from "@/lib/providers/types";
 import { readSse } from "@/lib/providers/sse";
 
@@ -24,7 +25,7 @@ export function createAnthropicChat(apiKey: string, model: string): ChatStreamer
       });
       if (!response.ok || !response.body) {
         const detail = await response.text();
-        throw new Error(`Anthropic chat failed (${response.status}): ${detail.slice(0, 280)}`);
+        throw new Error(readableProviderError("Anthropic", response.status, detail));
       }
 
       let promptTokens = 0;

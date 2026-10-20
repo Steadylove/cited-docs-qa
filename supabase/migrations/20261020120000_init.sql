@@ -90,8 +90,14 @@ create table if not exists messages (
   completion_tokens integer not null default 0,
   embedding_tokens integer not null default 0,
   estimated_cost_usd numeric(14, 8) not null default 0,
+  estimated_cost_cny numeric(14, 8) not null default 0,
+  unpriced_models jsonb not null default '[]'::jsonb,
+  unverified_models jsonb not null default '[]'::jsonb,
   illustrative_cost_usd numeric(14, 8) not null default 0,
   refused boolean not null default false,
+  -- True when the answer covers only part of the question but still
+  -- contains the full refusal sentence.
+  partial boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -109,6 +115,7 @@ create table if not exists usage_events (
   completion_tokens integer not null default 0,
   embedding_tokens integer not null default 0,
   estimated_cost_usd numeric(14, 8) not null default 0,
+  estimated_cost_cny numeric(14, 8) not null default 0,
   created_at timestamptz not null default now()
 );
 
